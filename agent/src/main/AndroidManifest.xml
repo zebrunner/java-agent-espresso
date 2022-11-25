@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.zebrunner.agent">
+
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <instrumentation
+        android:name="androidx.test.runner.AndroidJUnitRunner"
+        android:functionalTest="false"
+        android:handleProfiling="false"
+        android:label="Tests for com.zebrunner.agent"
+        android:targetPackage="com.zebrunner.agent">
+        <meta-data
+            android:name="listener"
+            android:value="com.zebrunner.agent.TestRunListener"/>
+    </instrumentation>
+
+</manifest>
