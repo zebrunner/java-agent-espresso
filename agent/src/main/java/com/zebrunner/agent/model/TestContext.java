@@ -6,8 +6,6 @@ public class TestContext {
     private String testClassName;
     private String methodName;
 
-    public TestContext() {}
-
     public TestContext(String displayName, String testClassName, String methodName) {
         this.displayName = displayName;
         this.testClassName = testClassName;

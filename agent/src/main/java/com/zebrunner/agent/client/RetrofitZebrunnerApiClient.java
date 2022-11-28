@@ -5,9 +5,19 @@ import com.zebrunner.agent.core.exception.ServerException;
 import com.zebrunner.agent.core.logging.Log;
 import com.zebrunner.agent.core.registrar.RetryUtils;
 import com.zebrunner.agent.core.registrar.ZebrunnerApiClient;
-import com.zebrunner.agent.core.registrar.domain.*;
+import com.zebrunner.agent.core.registrar.domain.ArtifactReferenceDTO;
+import com.zebrunner.agent.core.registrar.domain.AutenticationData;
+import com.zebrunner.agent.core.registrar.domain.ExchangeRunContextResponse;
+import com.zebrunner.agent.core.registrar.domain.KnownIssueConfirmation;
+import com.zebrunner.agent.core.registrar.domain.LabelDTO;
+import com.zebrunner.agent.core.registrar.domain.TestCaseResult;
+import com.zebrunner.agent.core.registrar.domain.TestDTO;
+import com.zebrunner.agent.core.registrar.domain.TestRunDTO;
+import com.zebrunner.agent.core.registrar.domain.TestRunPlatform;
+import com.zebrunner.agent.core.registrar.domain.TestSessionDTO;
 
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import okhttp3.MediaType;
 import okhttp3.MultipartBody;
@@ -24,10 +34,9 @@ import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-
 public class RetrofitZebrunnerApiClient implements ZebrunnerApiClient {
 
-    private static final Logger log = org.slf4j.LoggerFactory.getLogger(RetrofitZebrunnerApiClient.class);
+    private static final Logger log = LoggerFactory.getLogger(RetrofitZebrunnerApiClient.class);
     private static RetrofitZebrunnerApiClient INSTANCE;
     private volatile ApiClientService client;
     private volatile String token;
@@ -284,7 +293,7 @@ public class RetrofitZebrunnerApiClient implements ZebrunnerApiClient {
     public void uploadScreenshot(byte[] screenshot, Long testRunId, Long testId, Long capturedAt) {
         String token = obtainToken();
         this.sendVoidRequest(client -> {
-            RequestBody body = RequestBody.create( screenshot, MediaType.parse("image/png"));
+            RequestBody body = RequestBody.create(screenshot, MediaType.parse("image/png"));
             Call<String> call = client.uploadScreenshotCall(token, capturedAt.toString(), testRunId.toString(),
                     testId.toString(), body);
             try {

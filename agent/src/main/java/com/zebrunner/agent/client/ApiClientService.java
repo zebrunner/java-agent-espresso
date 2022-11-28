@@ -1,11 +1,31 @@
 package com.zebrunner.agent.client;
 
 import com.zebrunner.agent.core.logging.Log;
-import com.zebrunner.agent.core.registrar.domain.*;
+import com.zebrunner.agent.core.registrar.domain.ArtifactReferenceDTO;
+import com.zebrunner.agent.core.registrar.domain.AutenticationData;
+import com.zebrunner.agent.core.registrar.domain.ExchangeRunContextResponse;
+import com.zebrunner.agent.core.registrar.domain.KnownIssueConfirmation;
+import com.zebrunner.agent.core.registrar.domain.LabelDTO;
+import com.zebrunner.agent.core.registrar.domain.TestCaseResult;
+import com.zebrunner.agent.core.registrar.domain.TestDTO;
+import com.zebrunner.agent.core.registrar.domain.TestRunDTO;
+import com.zebrunner.agent.core.registrar.domain.TestRunPlatform;
+import com.zebrunner.agent.core.registrar.domain.TestSessionDTO;
+
 import okhttp3.MultipartBody;
 import okhttp3.RequestBody;
 import retrofit2.Call;
-import retrofit2.http.*;
+import retrofit2.http.Body;
+import retrofit2.http.DELETE;
+import retrofit2.http.Header;
+import retrofit2.http.Headers;
+import retrofit2.http.Multipart;
+import retrofit2.http.PATCH;
+import retrofit2.http.POST;
+import retrofit2.http.PUT;
+import retrofit2.http.Part;
+import retrofit2.http.Path;
+import retrofit2.http.Query;
 
 import java.util.Collection;
 import java.util.List;

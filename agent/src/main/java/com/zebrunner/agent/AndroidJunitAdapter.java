@@ -30,8 +30,8 @@ public class AndroidJunitAdapter {
     public void registerRunStart(Description description) {
         Log.d(TAG, "Register run start");
         String name = description.getChildren().stream()
-                .findFirst().orElseThrow(IllegalArgumentException::new)
-                .getDisplayName();
+                                 .findFirst().orElseThrow(IllegalArgumentException::new)
+                                 .getDisplayName();
         TestRunStartDescriptor testRunStartDescriptor = new TestRunStartDescriptor(
                 name,
                 "espresso",
