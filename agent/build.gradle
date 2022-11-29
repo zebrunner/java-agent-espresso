@@ -31,4 +31,7 @@ dependencies {
     implementation 'androidx.test.espresso:espresso-core:3.4.0'
     api 'com.zebrunner:agent-core:1.7.1-SNAPSHOT'
 
+    annotationProcessor 'org.projectlombok:lombok:1.18.24'
+    compileOnly 'org.projectlombok:lombok:1.18.24'
+
 }

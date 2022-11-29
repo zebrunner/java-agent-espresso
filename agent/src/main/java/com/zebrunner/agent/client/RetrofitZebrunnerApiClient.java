@@ -1,10 +1,7 @@
 package com.zebrunner.agent.client;
 
-import com.zebrunner.agent.core.config.ConfigurationHolder;
-import com.zebrunner.agent.core.exception.ServerException;
+import com.zebrunner.agent.client.request.JsonPatchRequestItem;
 import com.zebrunner.agent.core.logging.Log;
-import com.zebrunner.agent.core.registrar.RetryUtils;
-import com.zebrunner.agent.core.registrar.ZebrunnerApiClient;
 import com.zebrunner.agent.core.registrar.domain.ArtifactReferenceDTO;
 import com.zebrunner.agent.core.registrar.domain.AutenticationData;
 import com.zebrunner.agent.core.registrar.domain.ExchangeRunContextResponse;
@@ -16,504 +13,148 @@ import com.zebrunner.agent.core.registrar.domain.TestRunDTO;
 import com.zebrunner.agent.core.registrar.domain.TestRunPlatform;
 import com.zebrunner.agent.core.registrar.domain.TestSessionDTO;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import okhttp3.MediaType;
 import okhttp3.MultipartBody;
 import okhttp3.RequestBody;
 import retrofit2.Call;
-import retrofit2.Response;
+import retrofit2.http.Body;
+import retrofit2.http.DELETE;
+import retrofit2.http.Header;
+import retrofit2.http.Headers;
+import retrofit2.http.Multipart;
+import retrofit2.http.PATCH;
+import retrofit2.http.POST;
+import retrofit2.http.PUT;
+import retrofit2.http.Part;
+import retrofit2.http.Path;
+import retrofit2.http.Query;
 
-import java.io.IOException;
-import java.io.InputStream;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Consumer;
-import java.util.function.Function;
 
-public class RetrofitZebrunnerApiClient implements ZebrunnerApiClient {
+public interface RetrofitZebrunnerApiClient {
 
-    private static final Logger log = LoggerFactory.getLogger(RetrofitZebrunnerApiClient.class);
-    private static RetrofitZebrunnerApiClient INSTANCE;
-    private volatile ApiClientService client;
-    private volatile String token;
+    @POST("/api/iam/v1/auth/refresh")
+    Call<AutenticationData> refreshToken(@Body Map<String, String> refreshToken);
 
-    private RetrofitZebrunnerApiClient() {
-        if (ConfigurationHolder.isReportingEnabled()) {
-            client = initClient();
-        }
-    }
+    @POST("/api/reporting/v1/test-runs")
+    Call<TestRunDTO> startTestRun(@Query("projectKey") String projectKey,
+                                  @Header("Authorization") String token,
+                                  @Body TestRunDTO testRunDTO);
 
-    public static synchronized RetrofitZebrunnerApiClient getInstance() {
-        if (INSTANCE == null) {
-            INSTANCE = new RetrofitZebrunnerApiClient();
-        }
-        return INSTANCE;
-    }
+    @POST("/api/reporting/v1/test-runs/{testRunId}/tests")
+    Call<TestDTO> startTest(@Path("testRunId") String testRunId,
+                            @Query("headless") boolean headless,
+                            @Header("Authorization") String token,
+                            @Body TestDTO test);
 
-    private ApiClientService initClient() {
-        return RetrofitServiceGenerator.createService(ApiClientService.class);
-    }
+    @PUT("/api/reporting/v1/test-runs/{testRunId}/tests/{testId}")
+    Call<TestDTO> updateTest(@Path("testRunId") String testRunId,
+                             @Path("testId") String testId,
+                             @Query("headless") boolean headless,
+                             @Header("Authorization") String token,
+                             @Body TestDTO testDTO);
 
-    private String formatError(String message, Response<?> response) {
-        return String.format(
-                "%s\nResponse status code: %s.\nRaw response body: \n%s",
-                message, response.code(), response.errorBody()
-        );
-    }
+    @PUT("/api/reporting/v1/test-runs/{testRunId}")
+    Call<String> updateTestRun(@Path("testRunId") String testRunId,
+                               @Header("Authorization") String token,
+                               @Body TestRunDTO testRun);
 
-    private <T> T sendRequest(Function<ApiClientService, Response<T>> requestExecutor) {
-        if (client != null) {
-            return RetryUtils.tryInvoke(
-                    () -> requestExecutor.apply(client)
-                                         .body(),
-                    this::isVolatileRecoverableException,
-                    3
-            );
-        }
-        return null;
-    }
+    @POST("/api/reporting/v1/test-runs/{testRunId}/logs")
+    Call<String> postLogs(@Path("testRunId") String testRunId,
+                          @Header("Authorization") String token,
+                          @Body Collection<Log> logs);
 
-    private void sendVoidRequest(Consumer<ApiClientService> requestExecutor) {
-        if (client != null) {
-            RetryUtils.tryInvoke(
-                    () -> requestExecutor.accept(client),
-                    this::isVolatileRecoverableException,
-                    3
-            );
-        }
-    }
+    @DELETE("/api/reporting/v1/test-runs/{testRunId}/tests/{testId}")
+    Call<String> deleteTest(@Path("testRunId") String testRunId,
+                            @Path("testId") String testId,
+                            @Header("Authorization") String token);
 
-    private boolean isVolatileRecoverableException(Throwable e) {
-        do {
-            String message = e.getMessage();
-            message = message != null
-                    ? message.toLowerCase()
-                    : "";
-            if (message.contains("connection reset") || message.contains("unable to find valid certification path")) {
-                return true;
-            }
-            e = e.getCause();
-        } while (e != null && e != e.getCause());
-        return false;
-    }
+    @PATCH("/api/reporting/v1/test-runs/{testRunId}")
+    Call<String> patchTestRun(@Path("testRunId") String testRunId,
+                              @Header("Authorization") String token,
+                              @Body List<JsonPatchRequestItem> patchRequest);
 
-    private void throwServerException(String message, Response<?> response) {
-        throw new ServerException(this.formatError(message, response));
-    }
+    @PUT("/api/reporting/v1/test-runs/{testRunId}/platform")
+    Call<String> setTestRunPlatform(@Path("testRunId") String testRunId,
+                                    @Header("Authorization") String token,
+                                    @Body TestRunPlatform testRunPlatform);
 
-    @Override
-    public TestRunDTO registerTestRunStart(TestRunDTO testRun) {
-        String token = this.obtainToken();
-        return this.sendRequest(client -> {
-            Call<TestRunDTO> call = client.getTestRunDTO(token, testRun, ConfigurationHolder.getProjectKey());
-            try {
-                Response<TestRunDTO> response = call.execute();
-                if (!response.isSuccessful()) {
-                    // null out the api client since we cannot use it anymore
-                    client = null;
-                    this.throwServerException("Could not register start of the test run.", response);
-                }
-                return response;
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
-    }
+    @POST("/api/reporting/v1/test-runs/{testRunId}/tests/{testId}")
+    Call<TestDTO> rerunTest(@Path("testRunId") String testRunId,
+                            @Path("testId") String testId,
+                            @Query("headless") boolean headless,
+                            @Header("Authorization") String token,
+                            @Body TestDTO test);
 
-    @Override
-    public void patchTestRunBuild(Long testRunId, String build) {
-        String token = obtainToken();
-        this.sendVoidRequest(client -> {
-            Call<String> call = client.patchTestRunBuildCall(token, testRunId.toString(), build);
-            try {
-                Response<String> response = call.execute();
-                if(!response.isSuccessful()) {
-                    this.throwServerException("Could not patch build of the test run.", response);
-                }
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
-    }
+    @PUT("/api/reporting/v1/test-runs/{testRunId}/tests/{testId}/labels")
+    Call<String> attachLabelsToTest(@Path("testRunId") String testRunId,
+                                    @Path("testId") String testId,
+                                    @Header("Authorization") String token,
+                                    @Body Map<String, Collection<LabelDTO>> labelMap);
 
-    @Override
-    public void setTestRunPlatform(Long testRunId, String platformName, String platformVersion) {
-        String token = obtainToken();
-        this.sendVoidRequest(client -> {
-            Call<String> call = client.setTestRunPlatformCall(token, testRunId.toString(), new TestRunPlatform(platformName, platformVersion));
-            try {
-                Response<String> response = call.execute();
-                if(!response.isSuccessful()) {
-                    this.throwServerException("Could not set platform of the test run.", response);
-                }
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
-    }
+    @PUT("/api/reporting/v1/test-runs/{testRunId}/labels")
+    Call<String> attachLabelsToTestRun(@Path("testRunId") String testRunId,
+                                       @Header("Authorization") String token,
+                                       @Body Map<String, Collection<LabelDTO>> labelMap);
 
-    @Override
-    public void registerTestRunFinish(TestRunDTO testRun) {
-        String token = obtainToken();
-        this.sendVoidRequest(client -> {
-            Call<String> call = client.testRunFinishCall(token, testRun, testRun.getId().toString());
-            try {
-                Response<String> response = call.execute();
-                if (!response.isSuccessful()) {
-                    this.throwServerException("Could not register finish of the test run.", response);
-                }
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
-    }
+    @POST("/api/reporting/v1/test-runs/{testRunId}/tests/{testId}/test-cases:upsert")
+    Call<String> upsertTestCaseResults(@Path("testRunId") String testRunId,
+                                       @Path("testId") String testId,
+                                       @Header("Authorization") String token,
+                                       @Body Map<String, Collection<TestCaseResult>> testCaseMap);
 
-    @Override
-    public TestDTO registerTestStart(Long testRunId, TestDTO test, boolean headless) {
-        String token = obtainToken();
-        return this.sendRequest(client -> {
-            Call<TestDTO> call = client.getTestDTO(token, testRunId.toString(), headless, test);
-            try {
-                Response<TestDTO> response = call.execute();
-                if (!response.isSuccessful()) {
-                    this.throwServerException("Could not register start of the test.", response);
-                }
-                return response;
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
-    }
+    @Headers({"Content-Type: image/png"})
+    @POST("/api/reporting/v1/test-runs/{testRunId}/tests/{testId}/screenshots")
+    Call<String> uploadScreenshot(@Path("testRunId") String testRunId,
+                                  @Path("testId") String testId,
+                                  @Header("Authorization") String token,
+                                  @Header("x-zbr-screenshot-captured-at") String capturedAt,
+                                  @Body RequestBody screenshot);
 
-    @Override
-    public TestDTO registerTestRerunStart(Long testRunId, Long testId, TestDTO test, boolean headless) {
-        return this.sendRequest(client -> {
-            Call<TestDTO> call = client.registerTestRerunStartCall(token, test, testRunId.toString(), testId.toString(), headless);
-            try {
-                Response<TestDTO> response = call.execute();
-                if(!response.isSuccessful()) {
-                    this.throwServerException("Could not register start of rerun of the test.", response);
-                }
-                return response;
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
-    }
+    @Multipart
+    @POST("/api/reporting/v1/test-runs/{testRunId}/artifacts")
+    Call<String> uploadTestRunArtifact(@Path("testRunId") String testRunId,
+                                       @Header("Authorization") String token,
+                                       @Part MultipartBody.Part filePart);
 
-    @Override
-    public TestDTO registerHeadlessTestUpdate(Long testRunId, TestDTO test) {
-        String token = obtainToken();
-        return this.sendRequest(client -> {
-            Call<TestDTO> call = client.headlessTestUpdateCall(token, testRunId.toString(), test.getId().toString(), true, test);
-            try {
-                Response<TestDTO> response = call.execute();
-                if(!response.isSuccessful()) {
-                    this.throwServerException("Could not register start of the test.", response);
-                }
-                return response;
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
-    }
+    @Multipart
+    @POST("/api/reporting/v1/test-runs/{testRunId}/tests/{testId}/artifacts")
+    Call<String> uploadTestArtifact(@Path("testRunId") String testRunId,
+                                    @Path("testId") String testId,
+                                    @Header("Authorization") String token,
+                                    @Part MultipartBody.Part filePart);
 
-    @Override
-    public void revertTestRegistration(Long testRunId, Long testId) {
-        String token = obtainToken();
-        this.sendVoidRequest(client -> {
-            Call<String> call = client.revertTestRegistrationCall(token, testRunId.toString(), testId.toString());
-            try {
-                Response<String> response = call.execute();
-                if(!response.isSuccessful()) {
-                    this.throwServerException("Could not revert test registration.", response);
-                }
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
-    }
+    @PUT("/api/reporting/v1/test-runs/{testRunId}/artifact-references")
+    Call<String> attachArtifactReferenceToTestRun(@Path("testRunId") String testRunId,
+                                                  @Header("Authorization") String token,
+                                                  @Body Map<String, List<ArtifactReferenceDTO>> requestBody);
 
-    @Override
-    public void registerTestFinish(Long testRunId, TestDTO test) {
-        String token = obtainToken();
-        this.sendVoidRequest(client -> {
-            Call<String> call = client.testFinishCall(token, testRunId.toString(), test.getId().toString(), false, test);
-            try {
-                Response<String> response = call.execute();
-                if (!response.isSuccessful()) {
-                    this.throwServerException("Could not register finish of the test.", response);
-                }
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
-    }
+    @PUT("/api/reporting/v1/test-runs/{testRunId}/tests/{testId}/artifact-references")
+    Call<String> attachArtifactReferenceToTest(@Path("testRunId") String testRunId,
+                                               @Path("testId") String testId,
+                                               @Header("Authorization") String token,
+                                               @Body Map<String, List<ArtifactReferenceDTO>> requestBody);
 
-    @Override
-    public void sendLogs(Collection<Log> logs, Long testRunId) {
-        String token = obtainToken();
-        this.sendVoidRequest(client -> {
-            Call<String> call = client.postLogs(token, testRunId.toString(), logs);
-            try {
-                Response<String> response = call.execute();
-                if(!response.isSuccessful()) {
-                    log.error(this.formatError("Could not send a batch of test logs.", response));
-                }
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
-    }
+    @POST("/api/reporting/v1/run-context-exchanges")
+    Call<ExchangeRunContextResponse> exchangeRerunCondition(@Header("Authorization") String token,
+                                                            @Body String rerunCondition);
 
-    @Override
-    public void upsertTestCaseResults(Long testRunId, Long testId, Collection<TestCaseResult> testCaseResults) {
-        String token = obtainToken();
-        this.sendVoidRequest(client -> {
-            Call<String> call = client.upsertTestCaseResultsCall(token, testRunId.toString(), testId.toString(),
-                    Collections.singletonMap("testCases", testCaseResults));
-            try {
-                Response<String> response = call.execute();
-                if(response.code() == 404) {
-                    log.warn("This functionality is not available for your Zebrunner distribution");
-                } else {
-                    log.error(this.formatError("Could not send test case results.", response));
-                }
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
-    }
+    @POST("/api/reporting/v1/test-runs/{testRunId}/test-sessions")
+    Call<TestSessionDTO> startSession(@Path("testRunId") String testRunId,
+                                      @Header("Authorization") String token,
+                                      @Body TestSessionDTO testSession);
 
-    @Override
-    public void uploadScreenshot(byte[] screenshot, Long testRunId, Long testId, Long capturedAt) {
-        String token = obtainToken();
-        this.sendVoidRequest(client -> {
-            RequestBody body = RequestBody.create(screenshot, MediaType.parse("image/png"));
-            Call<String> call = client.uploadScreenshotCall(token, capturedAt.toString(), testRunId.toString(),
-                    testId.toString(), body);
-            try {
-                Response<String> response = call.execute();
-                if(!response.isSuccessful()) {
-                    log.error(this.formatError("Could not upload a screenshot.", response));
-                }
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
-    }
+    @PUT("/api/reporting/v1/test-runs/{testRunId}/test-sessions/{testSessionId}")
+    Call<String> updateSession(@Path("testRunId") String testRunId,
+                               @Path("testSessionId") String testSessionId,
+                               @Header("Authorization") String token,
+                               @Body TestSessionDTO testSession);
 
-    @Override
-    public void uploadTestRunArtifact(InputStream artifact, String name, Long testRunId) {
-        String token = obtainToken();
-        this.sendVoidRequest(client -> {
-            try {
-                byte[] artifactBytes = new byte[artifact.available()];
-                artifact.read(artifactBytes);
-                MultipartBody.Part filePart = MultipartBody.Part.createFormData("file", name, RequestBody.create(artifactBytes));
-                Call<String> call = client.uploadTestRunArtifactCall(token, testRunId.toString(), filePart);
-                Response<String> response = call.execute();
-                if (!response.isSuccessful()) {
-                    log.error(this.formatError("Could not attach test run artifact with name " + name, response));
-                }
-            } catch (IOException e) {
-                throw new RuntimeException("Could not read artifact bytes or execute response", e);
-            }
-        });
-    }
+    @POST("/api/reporting/v1/test-runs/{testRunId}/tests/{testId}/known-issue-confirmations")
+    Call<KnownIssueConfirmation> confirmIssue(@Path("testRunId") String testRunId,
+                                              @Path("testId") String testId,
+                                              @Header("Authorization") String token,
+                                              @Body Map<String, String> failureRequest);
 
-    @Override
-    public void uploadTestArtifact(InputStream artifact, String name, Long testRunId, Long testId) {
-        String token = obtainToken();
-        this.sendVoidRequest(client -> {
-            try {
-                byte[] artifactBytes = new byte[artifact.available()];
-                artifact.read(artifactBytes);
-                MultipartBody.Part filePart = MultipartBody.Part.createFormData("file", name, RequestBody.create(artifactBytes));
-                Call<String> call = client.uploadTestArtifactCall(token, testRunId.toString(), testId.toString(), filePart);
-                Response<String> response = call.execute();
-                if (!response.isSuccessful()) {
-                    log.error(this.formatError("Could not attach test artifact with name " + name, response));
-                }
-            } catch (IOException e) {
-                throw new RuntimeException("Could not read artifact bytes or execute response", e);
-            }
-        });
-    }
-
-    @Override
-    public void attachArtifactReferenceToTestRun(Long testRunId, ArtifactReferenceDTO artifactReference) {
-        String token = obtainToken();
-        Map<String, List<ArtifactReferenceDTO>> requestBody = Collections.singletonMap(
-                "items", Collections.singletonList(artifactReference)
-        );
-        this.sendVoidRequest(client -> {
-            Call<String> call = client.attachArtifactReferenceToTestRunCall(token, testRunId.toString(), requestBody);
-            try {
-                Response<String> response = call.execute();
-                if (!response.isSuccessful()) {
-                    log.error(this.formatError(
-                                "Could not attach the following test run artifact reference: " + artifactReference,
-                                response
-                        ));
-                }
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
-    }
-
-    @Override
-    public void attachArtifactReferenceToTest(Long testRunId, Long testId, ArtifactReferenceDTO artifactReference) {
-        String token = obtainToken();
-        this.sendVoidRequest(client -> {
-            Call<String> call = client.attachArtifactReferenceToTestCall(token, testRunId.toString(), testId.toString(),
-                    Collections.singletonMap("items", Collections.singletonList(artifactReference)));
-            try {
-                Response<String> response = call.execute();
-                if (!response.isSuccessful()) {
-                    log.error(this.formatError(
-                                "Could not attach the following test artifact reference: " + artifactReference,
-                                response
-                        ));
-                }
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
-    }
-
-    @Override
-    public void attachLabelsToTestRun(Long testRunId, Collection<LabelDTO> labels) {
-        String token = obtainToken();
-        this.sendVoidRequest(client -> {
-            Call<String> call = client.attachLabelsToTestRunCall(token, testRunId.toString(), Collections.singletonMap("items", labels));
-            try {
-                Response<String> response = call.execute();
-                if(!response.isSuccessful()) {
-                    log.error(this.formatError("Could not attach the following labels to test run: " + labels, response));
-                }
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
-    }
-
-    @Override
-    public void attachLabelsToTest(Long testRunId, Long testId, Collection<LabelDTO> labels) {
-        String token = obtainToken();
-        this.sendVoidRequest(client -> {
-            Call<String> call = client.attachLabelsToTestCall(token, testRunId.toString(), testId.toString(),
-                    Collections.singletonMap("items", labels));
-            try {
-                Response<String> response = call.execute();
-                if(!response.isSuccessful()) {
-                    log.error(this.formatError("Could not attach the following labels to test: " + labels, response));
-                }
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
-    }
-
-    @Override
-    public ExchangeRunContextResponse exchangeRerunCondition(String rerunCondition) {
-        String token = obtainToken();
-        return this.sendRequest(client -> {
-            Call<ExchangeRunContextResponse> call = client.exchangeRerunConditionCall(token, rerunCondition);
-            try {
-                Response<ExchangeRunContextResponse> response = call.execute();
-                if (!response.isSuccessful()) {
-                    this.throwServerException("Could not get tests by ci run id.", response);
-                }
-                return response;
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
-    }
-
-    @Override
-    public TestSessionDTO startSession(Long testRunId, TestSessionDTO testSession) {
-        String token = obtainToken();
-        return this.sendRequest(client -> {
-            Call<TestSessionDTO> call = client.startSessionCall(token, testRunId.toString(), testSession);
-            try {
-                Response<TestSessionDTO> response = call.execute();
-                if (!response.isSuccessful()) {
-                    this.throwServerException("Could not register start of the test session.", response);
-                }
-                return response;
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
-    }
-
-    @Override
-    public void updateSession(Long testRunId, TestSessionDTO testSession) {
-        String token = obtainToken();
-        this.sendVoidRequest(client -> {
-            Call<String> call = client.updateSessionCall(token, testRunId.toString(), testSession.getId().toString(), testSession);
-            try {
-                Response<String> response = call.execute();
-                if (!response.isSuccessful()) {
-                    this.throwServerException("Could not update test session.", response);
-                }
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
-    }
-
-    @Override
-    public boolean isKnownIssueAttachedToTest(Long testRunId, Long testId, String failureStacktrace) {
-        String token = obtainToken();
-        KnownIssueConfirmation confirmation = this.sendRequest(client -> {
-            Call<KnownIssueConfirmation> call = client.isKnownIssueAttachedToTestCall(token, testRunId.toString(), testId.toString(),
-                    Collections.singletonMap("failureReason", failureStacktrace));
-            try {
-                Response<KnownIssueConfirmation> response = call.execute();
-                if (!response.isSuccessful()) {
-                    this.throwServerException("Could not retrieve status of attached known issues.", response);
-                }
-                return response;
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
-        return confirmation != null && confirmation.isKnownIssue();
-    }
-
-    private String obtainToken() {
-        if (token == null) {
-            AutenticationData autenticationData = this.login();
-            this.token = "Bearer " + autenticationData.getAuthToken();
-        }
-        return token;
-    }
-
-    private AutenticationData login() {
-        return getAuthData();
-    }
-
-    private AutenticationData getAuthData() {
-        String refreshToken = ConfigurationHolder.getToken();
-        Call<AutenticationData> call = client.getAuthData(Collections.singletonMap("refreshToken", refreshToken));
-        try {
-            Response<AutenticationData> response = call.execute();
-            if (!response.isSuccessful()) {
-                // null out the api client since we cannot use it anymore
-                client = null;
-                this.throwServerException("Not able to obtain api token", response);
-            }
-            return response.body();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
 }
