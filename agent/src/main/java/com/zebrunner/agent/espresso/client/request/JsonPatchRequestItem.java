@@ -1,4 +1,4 @@
-package com.zebrunner.agent.client.request;
+package com.zebrunner.agent.espresso.client.request;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;

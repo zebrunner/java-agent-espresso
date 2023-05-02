@@ -1,35 +1,50 @@
-package com.zebrunner.agent;
+package com.zebrunner.agent.espresso;
 
-import com.zebrunner.agent.client.ZebrunnerApiClientImpl;
 import com.zebrunner.agent.core.registrar.ClientRegistrar;
+import com.zebrunner.agent.espresso.client.impl.ZebrunnerApiClientImpl;
 
 import org.junit.runner.Description;
 import org.junit.runner.Result;
 import org.junit.runner.notification.Failure;
 import org.junit.runner.notification.RunListener;
 
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class TestRunListener extends RunListener {
 
-    private final AndroidJunitAdapter adapter;
+    private final JunitAdapter adapter;
 
     public TestRunListener() {
-        ClientRegistrar.registry(ZebrunnerApiClientImpl.getInstance());
-        this.adapter = new AndroidJunitAdapter();
+        ClientRegistrar.register(ZebrunnerApiClientImpl.getInstance());
+
+        this.adapter = new JunitAdapter();
     }
 
     @Override
     public void testRunStarted(Description description) {
         log.debug("Registering test run start...");
 
-        adapter.registerRunStart(description);
+        adapter.registerRunStart(this.resolveTestRunDescription(description));
 
         log.debug("Registering test run start finished.");
     }
 
+    private Description resolveTestRunDescription(Description description) {
+        // Don't know why, but in some cases root test run description can have no test class and have displayName as "null"
+        if (description.getTestClass() != null) {
+            return description;
+        }
+
+        return description.getChildren()
+                          .stream()
+                          .findFirst()
+                          .orElse(description);
+    }
+
     @Override
+    @SneakyThrows
     public void testRunFinished(Result result) {
         log.debug("Registering test run finish...");
 

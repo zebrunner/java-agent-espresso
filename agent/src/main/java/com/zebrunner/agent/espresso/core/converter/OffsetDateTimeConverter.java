@@ -1,4 +1,4 @@
-package com.zebrunner.agent.core.converter;
+package com.zebrunner.agent.espresso.core.converter;
 
 import com.google.gson.JsonDeserializationContext;
 import com.google.gson.JsonDeserializer;

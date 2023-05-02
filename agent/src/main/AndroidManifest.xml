@@ -4,10 +4,10 @@
 
     <instrumentation
         android:name="androidx.test.runner.AndroidJUnitRunner"
-        android:targetPackage="com.zebrunner.agent">
+        android:targetPackage="com.zebrunner.agent.espresso">
         <meta-data
             android:name="listener"
-            android:value="com.zebrunner.agent.TestRunListener"/>
+            android:value="com.zebrunner.agent.espresso.TestRunListener" />
     </instrumentation>
 
 </manifest>
