@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.zebrunner.agent">
+
+    <instrumentation
+        android:name="androidx.test.runner.AndroidJUnitRunner"
+        android:targetPackage="com.zebrunner.agent.espresso">
+        <meta-data
+            android:name="listener"
+            android:value="com.zebrunner.agent.espresso.TestRunListener" />
+    </instrumentation>
+
+</manifest>
