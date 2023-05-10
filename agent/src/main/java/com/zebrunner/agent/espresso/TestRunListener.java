@@ -26,21 +26,9 @@ public class TestRunListener extends RunListener {
     public void testRunStarted(Description description) {
         log.debug("Registering test run start...");
 
-        adapter.registerRunStart(this.resolveTestRunDescription(description));
+        adapter.registerRunStart(description);
 
         log.debug("Registering test run start finished.");
-    }
-
-    private Description resolveTestRunDescription(Description description) {
-        // Don't know why, but in some cases root test run description can have no test class and have displayName as "null"
-        if (description.getTestClass() != null) {
-            return description;
-        }
-
-        return description.getChildren()
-                          .stream()
-                          .findFirst()
-                          .orElse(description);
     }
 
     @Override

@@ -22,15 +22,23 @@ import lombok.SneakyThrows;
 
 public class JunitAdapter {
 
-    private static final TestRunRegistrar registrar = TestRunRegistrar.getInstance();
     private static final Set<String> testRunTestIds = new ConcurrentSkipListSet<>();
+    private static final TestRunRegistrar registrar = TestRunRegistrar.getInstance();
+
+    private static Description rootSuiteDescription;
 
     public void registerRunStart(Description description) {
-        TestRunStartDescriptor testRunStartDescriptor = new TestRunStartDescriptor(
-                description.getDisplayName(), "espresso", OffsetDateTime.now(), null
-        );
+        if (rootSuiteDescription == null) {
+            rootSuiteDescription = description;
 
-        registrar.registerStart(testRunStartDescriptor);
+            OffsetDateTime startedAt = OffsetDateTime.now();
+            String name = "Espresso test run [" + startedAt.toInstant() + " (UTC)]";
+            TestRunStartDescriptor testRunStartDescriptor = new TestRunStartDescriptor(
+                    name, "espresso", startedAt, null
+            );
+
+            registrar.registerStart(testRunStartDescriptor);
+        }
     }
 
     public void registerRunFinish(Result result) {
