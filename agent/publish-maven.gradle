@@ -48,6 +48,13 @@ afterEvaluate {
                             url = 'http://www.apache.org/licenses/LICENSE-2.0.txt'
                         }
                     }
+                    developers {
+                        developer {
+                            id = 'dkazak'
+                            name = 'Dmitry Kazak'
+                            email = 'dkazak@solvd.com'
+                        }
+                    }
                     scm {
                         connection = 'https://github.com/zebrunner/java-agent-espresso.git'
                         developerConnection = 'git@github.com:zebrunner/java-agent-espresso.git'
