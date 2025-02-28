@@ -19,7 +19,3 @@ ENV PATH ${PATH}:/android-sdk/cmdline-tools/latest/bin:/android-sdk/cmdline-tool
 
 # Install appropriate Android SDK version
 RUN yes | sdkmanager --licenses && sdkmanager "platforms;android-${ANDROID_API_LEVEL}" "build-tools;${ANDROID_BUILD_TOOLS_VERSION}"
-
-COPY . /agent-espresso
-
-WORKDIR /agent-espresso
